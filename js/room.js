@@ -31,6 +31,11 @@ const camBtn = document.getElementById("cam-btn");
 const screenBtn = document.getElementById("screenshare-btn");
 const leaveBtn = document.getElementById("leave-btn");
 
+const preJoinGate = document.getElementById("pre-join-gate");
+const roomShell = document.getElementById("room-shell");
+const ativarMidiaBtn = document.getElementById("ativar-midia-btn");
+const preJoinErro = document.getElementById("pre-join-erro");
+
 tituloEl.textContent = `Sala: ${codigoSala}`;
 subtituloEl.textContent = `Você entrou como ${meuNome}`;
 
@@ -100,21 +105,80 @@ function svgMic() {
 // ---------------------------------------------------------
 // 1) Pega câmera/microfone locais
 // ---------------------------------------------------------
+
+// Traduz o erro do navegador numa mensagem que a pessoa entende e sabe resolver.
+function mensagemDeErroMidia(err) {
+  switch (err?.name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "O acesso à câmera/microfone foi bloqueado. Clique no ícone de cadeado (ou câmera) ao lado do endereço do site, permita o acesso e tente de novo.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "Não encontrei uma câmera ou microfone neste dispositivo. Conecte um e tente novamente.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "Sua câmera ou microfone já está sendo usada por outro aplicativo ou aba. Feche o que estiver usando e tente de novo.";
+    case "OverconstrainedError":
+      return "A câmera/microfone deste dispositivo não atendeu aos requisitos. Tente novamente.";
+    case "SecurityError":
+      return "O navegador bloqueou o acesso por motivos de segurança. Confirme que o site está sendo acessado por https:// e tente novamente.";
+    default:
+      return "Não consegui acessar sua câmera/microfone. Verifique as permissões do navegador e tente novamente.";
+  }
+}
+
 async function iniciarMidiaLocal() {
   try {
-    meuStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-  } catch (err) {
-    mostrarStatus(
-      "Não consegui acessar sua câmera/microfone. Verifique as permissões do navegador e recarregue a página.",
-      "error"
-    );
-    throw err;
+    // Tenta câmera + microfone juntos
+    meuStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    return { ok: true };
+  } catch (errCompleto) {
+    // Se falhar, tenta só o microfone (pode ser que só a câmera esteja indisponível)
+    try {
+      meuStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      return { ok: true, semCamera: true };
+    } catch {
+      return { ok: false, err: errCompleto };
+    }
   }
-  criarTile({ id: "local", nome: meuNome, stream: meuStream, local: true });
 }
+
+async function tentarAtivarMidia() {
+  ativarMidiaBtn.disabled = true;
+  ativarMidiaBtn.textContent = "Pedindo permissão...";
+  preJoinErro.classList.add("hidden");
+
+  const resultado = await iniciarMidiaLocal();
+
+  if (!resultado.ok) {
+    ativarMidiaBtn.disabled = false;
+    ativarMidiaBtn.textContent = "Tentar novamente";
+    preJoinErro.textContent = mensagemDeErroMidia(resultado.err);
+    preJoinErro.classList.remove("hidden");
+    return;
+  }
+
+  // Sucesso: libera a sala
+  preJoinGate.classList.add("hidden");
+  roomShell.classList.remove("hidden");
+
+  criarTile({ id: "local", nome: meuNome, stream: meuStream, local: true });
+
+  if (resultado.semCamera) {
+    camBtn.disabled = true;
+    camBtn.classList.add("off");
+    mostrarStatus(
+      "Você entrou só com áudio (a câmera não pôde ser usada). Ainda é possível compartilhar sua tela normalmente.",
+      null
+    );
+  } else {
+    mostrarStatus("Procurando outros participantes na sala...");
+  }
+
+  registrarNaSala(1);
+}
+
+ativarMidiaBtn.addEventListener("click", tentarAtivarMidia);
 
 // ---------------------------------------------------------
 // 2) Registra meu Peer numa vaga livre da sala
@@ -434,15 +498,6 @@ copyBtn.addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------
-// Start
+// A sala só é iniciada quando a pessoa clica em
+// "Ativar câmera e microfone" (veja tentarAtivarMidia acima).
 // ---------------------------------------------------------
-(async function start() {
-  mostrarStatus("Pedindo acesso à câmera e microfone...");
-  try {
-    await iniciarMidiaLocal();
-  } catch {
-    return; // erro já exibido
-  }
-  mostrarStatus("Procurando outros participantes na sala...");
-  registrarNaSala(1);
-})();

@@ -9,6 +9,72 @@ body.room-body {
   flex-direction: column;
   min-height: 100vh;
 }
+.room-shell.hidden { display: none; }
+
+/* ---------- Tela de permissão (pré-entrada) ---------- */
+.pre-join-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(52, 211, 153, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 100%, rgba(52, 211, 153, 0.05), transparent 40%),
+    var(--bg-0);
+}
+.pre-join-gate.hidden { display: none; }
+
+.pre-join-card {
+  width: 100%;
+  max-width: 420px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 20px 60px -20px rgba(0,0,0,0.6);
+}
+
+.pre-join-card .brand-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pre-join-card .brand-mark svg { width: 26px; height: 26px; color: var(--accent); }
+
+.pre-join-card h2 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.pre-join-card p {
+  color: var(--text-mid);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.pre-join-card button {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.pre-join-card button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 /* ---------- Cabeçalho ---------- */
 .room-header {

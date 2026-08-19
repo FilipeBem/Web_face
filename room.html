@@ -9,7 +9,21 @@
   <link rel="stylesheet" href="css/room.css" />
 </head>
 <body class="room-body">
-  <div class="room-shell">
+  <div id="pre-join-gate" class="pre-join-gate">
+    <div class="pre-join-card">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M15 10.5V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3.5l5 4v-11l-5 4Z"/>
+        </svg>
+      </div>
+      <h2>Antes de entrar na sala</h2>
+      <p>O Web Face precisa da sua permissão para usar a câmera e o microfone nesta chamada.</p>
+      <button id="ativar-midia-btn" class="btn-primary">Ativar câmera e microfone</button>
+      <p id="pre-join-erro" class="footnote hidden" style="color:#f87171; text-align:left;"></p>
+    </div>
+  </div>
+
+  <div class="room-shell hidden" id="room-shell">
     <header class="room-header">
       <div class="room-header-left">
         <span class="brand-wordmark">Web Face</span>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Face — Início</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="landing">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M15 10.5V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3.5l5 4v-11l-5 4Z"/>
+        </svg>
+      </div>
+      <h1>Web Face</h1>
+      <p>Crie uma sala e compartilhe o link. Vídeo, tela e chat, direto no navegador.</p>
+    </div>
+
+    <section class="panel">
+      <div class="field">
+        <label for="nome-input">Seu nome</label>
+        <input id="nome-input" type="text" placeholder="Como você quer aparecer na sala" maxlength="30" />
+      </div>
+
+      <button id="criar-sala-btn" class="btn-primary">Criar nova sala</button>
+
+      <div class="divider">ou</div>
+
+      <div class="field">
+        <label for="link-input">Entrar em uma sala</label>
+        <input id="link-input" type="text" placeholder="Cole o link ou código da sala" />
+      </div>
+      <button id="entrar-sala-btn" class="btn-secondary">Entrar na sala</button>
+
+      <p id="erro-msg" class="footnote hidden" style="color:#f87171;"></p>
+    </section>
+
+    <p class="footnote">Nenhum cadastro necessário. A sala existe enquanto houver alguém nela.</p>
+  </main>
+
+  <script src="js/landing.js"></script>
+</body>
+</html>

@@ -22,6 +22,12 @@ const participantes = new Map();
 // Elementos da tela
 // ---------------------------------------------------------
 const grid = document.getElementById("video-grid");
+const participantCountEl = document.getElementById("participant-count");
+
+function atualizarContadorParticipantes() {
+  const total = grid.querySelectorAll(".video-tile").length;
+  participantCountEl.textContent = total === 1 ? "1 participante" : `${total} participantes`;
+}
 const statusEl = document.getElementById("room-status");
 const tituloEl = document.getElementById("room-title");
 const subtituloEl = document.getElementById("room-sub");
@@ -107,14 +113,42 @@ function criarTile({ id, nome, stream, local }) {
 
   // Menu de volume: só faz sentido em participantes remotos (o próprio
   // vídeo local já vem sem áudio, pra não gerar eco).
+  // Computador: clique com o botão direito. Celular: toque e segure.
   if (!local) {
     tile.addEventListener("contextmenu", (evento) => {
       evento.preventDefault();
       abrirMenuVolume(tile, video, nome, evento.clientX, evento.clientY);
     });
+
+    let temporizadorToque = null;
+    const cancelarToqueLongo = () => {
+      if (temporizadorToque) {
+        clearTimeout(temporizadorToque);
+        temporizadorToque = null;
+      }
+    };
+
+    tile.addEventListener(
+      "touchstart",
+      (evento) => {
+        if (evento.target.closest(".tile-expand-btn")) return;
+        const toque = evento.touches[0];
+        const x = toque.clientX;
+        const y = toque.clientY;
+        temporizadorToque = setTimeout(() => {
+          abrirMenuVolume(tile, video, nome, x, y);
+          temporizadorToque = null;
+        }, 550);
+      },
+      { passive: true }
+    );
+    tile.addEventListener("touchend", cancelarToqueLongo);
+    tile.addEventListener("touchmove", cancelarToqueLongo);
+    tile.addEventListener("touchcancel", cancelarToqueLongo);
   }
 
   grid.appendChild(tile);
+  atualizarContadorParticipantes();
   return tile;
 }
 
@@ -123,6 +157,7 @@ function removerTile(id) {
   if (tile) {
     if (tile.classList.contains("is-expanded")) colapsarTelaCheia(tile);
     tile.remove();
+    atualizarContadorParticipantes();
   }
   if (volumeMenu.dataset.targetTile === id) fecharMenuVolume();
 }

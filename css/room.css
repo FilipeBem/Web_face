@@ -100,6 +100,18 @@ body.room-body {
   gap: 14px;
 }
 
+.room-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.participant-count {
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+
 .brand-wordmark {
   font-family: var(--font-display);
   font-weight: 700;

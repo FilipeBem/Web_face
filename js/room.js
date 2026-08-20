@@ -67,6 +67,7 @@ function criarTile({ id, nome, stream, local }) {
   const tile = document.createElement("div");
   tile.className = "video-tile" + (local ? " is-local" : "");
   tile.dataset.tileId = id;
+  tile.dataset.nome = nome;
 
   const video = document.createElement("video");
   video.autoplay = true;
@@ -74,6 +75,14 @@ function criarTile({ id, nome, stream, local }) {
   if (local) video.muted = true;
   if (stream) video.srcObject = stream;
   tile.appendChild(video);
+
+  const temVideo = !!stream && stream.getVideoTracks().length > 0;
+  tile.classList.toggle("has-video", temVideo);
+
+  const avatar = document.createElement("div");
+  avatar.className = "no-video-fallback";
+  avatar.textContent = iniciais(nome) || "?";
+  tile.appendChild(avatar);
 
   const nameTag = document.createElement("span");
   nameTag.className = "tile-name-tag";
@@ -85,13 +94,37 @@ function criarTile({ id, nome, stream, local }) {
   micBadge.innerHTML = svgMic();
   tile.appendChild(micBadge);
 
+  const expandBtn = document.createElement("button");
+  expandBtn.className = "tile-expand-btn";
+  expandBtn.title = "Tela cheia";
+  expandBtn.type = "button";
+  expandBtn.innerHTML = svgExpandir();
+  expandBtn.addEventListener("click", (evento) => {
+    evento.stopPropagation();
+    alternarTelaCheia(tile);
+  });
+  tile.appendChild(expandBtn);
+
+  // Menu de volume: só faz sentido em participantes remotos (o próprio
+  // vídeo local já vem sem áudio, pra não gerar eco).
+  if (!local) {
+    tile.addEventListener("contextmenu", (evento) => {
+      evento.preventDefault();
+      abrirMenuVolume(tile, video, nome, evento.clientX, evento.clientY);
+    });
+  }
+
   grid.appendChild(tile);
   return tile;
 }
 
 function removerTile(id) {
   const tile = grid.querySelector(`[data-tile-id="${CSS.escape(id)}"]`);
-  if (tile) tile.remove();
+  if (tile) {
+    if (tile.classList.contains("is-expanded")) colapsarTelaCheia(tile);
+    tile.remove();
+  }
+  if (volumeMenu.dataset.targetTile === id) fecharMenuVolume();
 }
 
 function svgMic() {
@@ -101,6 +134,116 @@ function svgMic() {
     <path d="M12 18v3"/>
   </svg>`;
 }
+
+function svgExpandir() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <path d="M8 3H4v4M16 3h4v4M8 21H4v-4M16 21h4v-4"/>
+  </svg>`;
+}
+
+function svgRecolher() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+  </svg>`;
+}
+
+// ---------------------------------------------------------
+// Tela cheia de um card (câmera ou compartilhamento)
+// ---------------------------------------------------------
+const tileBackdrop = document.getElementById("tile-backdrop");
+
+function alternarTelaCheia(tile) {
+  const jaExpandido = tile.classList.contains("is-expanded");
+
+  // Só um card expandido por vez
+  grid.querySelectorAll(".video-tile.is-expanded").forEach((outro) => {
+    if (outro !== tile) colapsarTelaCheia(outro);
+  });
+
+  jaExpandido ? colapsarTelaCheia(tile) : expandirTelaCheia(tile);
+}
+
+function expandirTelaCheia(tile) {
+  tile.classList.add("is-expanded");
+  tileBackdrop.classList.remove("hidden");
+  const btn = tile.querySelector(".tile-expand-btn");
+  if (btn) btn.innerHTML = svgRecolher();
+}
+
+function colapsarTelaCheia(tile) {
+  tile.classList.remove("is-expanded");
+  tileBackdrop.classList.add("hidden");
+  const btn = tile.querySelector(".tile-expand-btn");
+  if (btn) btn.innerHTML = svgExpandir();
+}
+
+tileBackdrop.addEventListener("click", () => {
+  const expandido = grid.querySelector(".video-tile.is-expanded");
+  if (expandido) colapsarTelaCheia(expandido);
+});
+
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape") {
+    const expandido = grid.querySelector(".video-tile.is-expanded");
+    if (expandido) colapsarTelaCheia(expandido);
+  }
+});
+
+// ---------------------------------------------------------
+// Menu de volume por participante (botão direito no card)
+// ---------------------------------------------------------
+const volumeMenu = document.getElementById("volume-menu");
+const volumeMenuNome = document.getElementById("volume-menu-name");
+const volumeMenuSlider = document.getElementById("volume-menu-slider");
+const volumeMenuMuteBtn = document.getElementById("volume-menu-mute");
+
+let videoDoMenuAtivo = null;
+
+function abrirMenuVolume(tile, video, nome, x, y) {
+  videoDoMenuAtivo = video;
+  volumeMenu.dataset.targetTile = tile.dataset.tileId;
+  volumeMenuNome.textContent = nome;
+  volumeMenuSlider.value = Math.round((video.muted ? 0 : video.volume) * 100);
+  volumeMenuMuteBtn.textContent = video.muted ? "Reativar som" : "Silenciar";
+
+  const larguraMenu = 220;
+  const alturaMenu = 140;
+  volumeMenu.style.left = `${Math.min(x, window.innerWidth - larguraMenu - 12)}px`;
+  volumeMenu.style.top = `${Math.min(y, window.innerHeight - alturaMenu - 12)}px`;
+  volumeMenu.classList.remove("hidden");
+}
+
+function fecharMenuVolume() {
+  volumeMenu.classList.add("hidden");
+  volumeMenu.dataset.targetTile = "";
+  videoDoMenuAtivo = null;
+}
+
+volumeMenuSlider.addEventListener("input", () => {
+  if (!videoDoMenuAtivo) return;
+  const v = Number(volumeMenuSlider.value) / 100;
+  videoDoMenuAtivo.volume = v;
+  videoDoMenuAtivo.muted = v === 0;
+  volumeMenuMuteBtn.textContent = videoDoMenuAtivo.muted ? "Reativar som" : "Silenciar";
+});
+
+volumeMenuMuteBtn.addEventListener("click", () => {
+  if (!videoDoMenuAtivo) return;
+  videoDoMenuAtivo.muted = !videoDoMenuAtivo.muted;
+  volumeMenuMuteBtn.textContent = videoDoMenuAtivo.muted ? "Reativar som" : "Silenciar";
+});
+
+document.addEventListener("click", (evento) => {
+  if (!volumeMenu.contains(evento.target)) fecharMenuVolume();
+});
+document.addEventListener(
+  "contextmenu",
+  (evento) => {
+    if (!evento.target.closest(".video-tile")) fecharMenuVolume();
+  },
+  true
+);
+window.addEventListener("resize", fecharMenuVolume);
 
 // ---------------------------------------------------------
 // 1) Pega câmera/microfone locais
@@ -227,7 +370,7 @@ function conectarComOutros() {
       chamada.on("stream", (streamRemoto) => {
         adicionarParticipante(idAlvo, meuNome, chamada, streamRemoto);
       });
-      aplicarTrackAtual(chamada);
+      aplicarTracksAtuais(chamada);
     }
 
     const conexaoDados = meuPeer.connect(idAlvo, {
@@ -248,7 +391,7 @@ function escutarConexoesRecebidas() {
     chamada.on("stream", (streamRemoto) => {
       adicionarParticipante(chamada.peer, nomeRemoto, chamada, streamRemoto);
     });
-    aplicarTrackAtual(chamada);
+    aplicarTracksAtuais(chamada);
   });
 
   meuPeer.on("connection", (conexao) => {
@@ -292,6 +435,7 @@ function adicionarParticipante(idRemoto, nome, mediaConn, stream) {
 // ---------------------------------------------------------
 // Compartilhamento de tela
 // ---------------------------------------------------------
+let audioCompartilhado = null; // { ctx, track } — mistura mic + áudio da tela, se houver
 
 // Retorna a faixa de vídeo que devemos estar enviando agora:
 // a da tela (se estiver compartilhando) ou a da câmera.
@@ -302,34 +446,58 @@ function trackDeVideoAtual() {
   return meuStream.getVideoTracks()[0];
 }
 
-// Troca a faixa de vídeo enviada numa chamada específica, sem
+// Retorna a faixa de áudio a enviar: o microfone sozinho, ou o
+// microfone misturado com o áudio da tela (se o navegador cedeu esse áudio).
+function trackDeAudioAtual() {
+  if (compartilhandoTela && audioCompartilhado) {
+    return audioCompartilhado.track;
+  }
+  return meuStream.getAudioTracks()[0];
+}
+
+// Troca as faixas de vídeo/áudio enviadas numa chamada específica, sem
 // precisar refazer a conexão (renegociação silenciosa do WebRTC).
-function aplicarTrackAtual(mediaConn) {
+function aplicarTracksAtuais(mediaConn) {
   const pc = mediaConn?.peerConnection;
   if (!pc) return;
-  const remetente = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-  const novaTrack = trackDeVideoAtual();
-  if (remetente && novaTrack) {
-    remetente.replaceTrack(novaTrack).catch((err) => console.warn("Falha ao trocar vídeo:", err));
+  const senders = pc.getSenders();
+
+  const remetenteVideo = senders.find((s) => s.track && s.track.kind === "video");
+  const novaVideo = trackDeVideoAtual();
+  if (remetenteVideo && novaVideo) {
+    remetenteVideo.replaceTrack(novaVideo).catch((err) => console.warn("Falha ao trocar vídeo:", err));
+  }
+
+  const remetenteAudio = senders.find((s) => s.track && s.track.kind === "audio");
+  const novaAudio = trackDeAudioAtual();
+  if (remetenteAudio && novaAudio) {
+    remetenteAudio.replaceTrack(novaAudio).catch((err) => console.warn("Falha ao trocar áudio:", err));
   }
 }
 
-function aplicarTrackParaTodos() {
+function aplicarTracksParaTodos() {
   participantes.forEach((info) => {
-    if (info.mediaConn) aplicarTrackAtual(info.mediaConn);
+    if (info.mediaConn) aplicarTracksAtuais(info.mediaConn);
   });
 }
 
 function atualizarTileLocal(stream, rotulo) {
-  const video = document.querySelector('.video-tile[data-tile-id="local"] video');
+  const tile = document.querySelector('.video-tile[data-tile-id="local"]');
+  if (!tile) return;
+  const video = tile.querySelector("video");
   if (video) video.srcObject = stream;
-  const nameTag = document.querySelector('.video-tile[data-tile-id="local"] .tile-name-tag');
+  const temVideo = !!stream && stream.getVideoTracks().length > 0;
+  tile.classList.toggle("has-video", temVideo);
+  const nameTag = tile.querySelector(".tile-name-tag");
   if (nameTag) nameTag.textContent = rotulo;
 }
 
 async function iniciarCompartilhamento() {
   try {
-    streamTela = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    // Pedimos vídeo + áudio da tela. Em muitos navegadores, o áudio só
+    // vem se a pessoa marcar "Compartilhar áudio" na caixa de seleção
+    // (e normalmente só funciona ao compartilhar uma aba, não a tela toda).
+    streamTela = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
   } catch {
     // Usuário cancelou a seleção de tela/janela. Não faz nada.
     return;
@@ -339,8 +507,24 @@ async function iniciarCompartilhamento() {
   screenBtn.classList.add("active");
   camBtn.disabled = true;
 
+  const audioDaTela = streamTela.getAudioTracks()[0] || null;
+  if (audioDaTela) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const destino = ctx.createMediaStreamDestination();
+      const micTrack = meuStream.getAudioTracks()[0];
+      if (micTrack) ctx.createMediaStreamSource(new MediaStream([micTrack])).connect(destino);
+      ctx.createMediaStreamSource(new MediaStream([audioDaTela])).connect(destino);
+      audioCompartilhado = { ctx, track: destino.stream.getAudioTracks()[0] };
+    } catch (err) {
+      console.warn("Não foi possível misturar o áudio da tela com o microfone:", err);
+      audioCompartilhado = null;
+    }
+  }
+
   atualizarTileLocal(streamTela, "Você (compartilhando tela)");
-  aplicarTrackParaTodos();
+  aplicarTracksParaTodos();
 
   // Se o usuário parar pelo botão nativo do navegador ("Parar compartilhamento"),
   // detectamos aqui e voltamos pra câmera automaticamente.
@@ -352,12 +536,18 @@ function pararCompartilhamento() {
 
   if (streamTela) streamTela.getTracks().forEach((t) => t.stop());
   streamTela = null;
+
+  if (audioCompartilhado) {
+    audioCompartilhado.ctx.close().catch(() => {});
+    audioCompartilhado = null;
+  }
+
   compartilhandoTela = false;
   screenBtn.classList.remove("active");
   camBtn.disabled = false;
 
   atualizarTileLocal(meuStream, `${meuNome} (você)`);
-  aplicarTrackParaTodos();
+  aplicarTracksParaTodos();
 }
 
 screenBtn.addEventListener("click", () => {
@@ -367,6 +557,7 @@ screenBtn.addEventListener("click", () => {
     iniciarCompartilhamento();
   }
 });
+
 
 // ---------------------------------------------------------
 // Chat
@@ -474,6 +665,7 @@ window.addEventListener("beforeunload", encerrarTudo);
 function encerrarTudo() {
   if (meuStream) meuStream.getTracks().forEach((t) => t.stop());
   if (streamTela) streamTela.getTracks().forEach((t) => t.stop());
+  if (audioCompartilhado) audioCompartilhado.ctx.close().catch(() => {});
   if (meuPeer) meuPeer.destroy();
 }
 

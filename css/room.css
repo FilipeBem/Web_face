@@ -1,13 +1,17 @@
 body.room-body {
   display: block;
   padding: 0;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .room-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 .room-shell.hidden { display: none; }
 
@@ -86,8 +90,7 @@ body.room-body {
   border-bottom: 1px solid var(--card-border);
   background: rgba(10, 15, 26, 0.7);
   backdrop-filter: blur(8px);
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 20;
 }
 
@@ -145,6 +148,7 @@ body.room-body {
   border: 1px solid var(--card-border);
   color: var(--text-mid);
   font-size: 0.85rem;
+  flex-shrink: 0;
 }
 .room-status.error {
   border-color: rgba(248, 113, 113, 0.4);
@@ -158,17 +162,24 @@ body.room-body {
   flex: 1;
   display: flex;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ---------- Grade de vídeos ---------- */
+/* Esta é a ÚNICA área com rolagem própria da sala — evita que o
+   celular tenha duas áreas de scroll competindo (bug de participantes
+   "sumindo" fora da tela em telas de toque). */
 .video-grid {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
   padding: 20px;
   align-content: start;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .video-tile {
@@ -194,6 +205,10 @@ body.room-body {
   object-fit: cover;
 }
 
+/* Mostra avatar em vez do <video> quando o participante não tem faixa de vídeo */
+.video-tile:not(.has-video) video { display: none; }
+.video-tile.has-video .no-video-fallback { display: none; }
+
 .video-tile .no-video-fallback {
   width: 64px;
   height: 64px;
@@ -206,6 +221,94 @@ body.room-body {
   font-size: 1.4rem;
   color: var(--text-mid);
 }
+
+/* Botão de tela cheia — canto inferior direito de cada card */
+.tile-expand-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(10, 15, 26, 0.72);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: var(--text-hi);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  z-index: 5;
+}
+.tile-expand-btn svg { width: 14px; height: 14px; }
+.tile-expand-btn:hover { color: var(--accent); }
+
+/* Quando o nome está no canto inferior esquerdo, o botão fica no direito — sem colisão */
+
+.tile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 13, 0.75);
+  z-index: 55;
+}
+.tile-backdrop.hidden { display: none; }
+
+.video-tile.is-expanded {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(92vw, 1100px);
+  height: min(88vh, 88dvh);
+  aspect-ratio: auto;
+  z-index: 60;
+  box-shadow: 0 30px 90px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* Menu de volume por participante (clique com o botão direito no card) */
+.volume-menu {
+  position: fixed;
+  z-index: 70;
+  width: 220px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.volume-menu.hidden { display: none; }
+
+.volume-menu-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-hi);
+}
+
+.volume-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.volume-menu-row svg { width: 16px; height: 16px; color: var(--text-mid); flex-shrink: 0; }
+
+.volume-menu input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.volume-menu-mute {
+  background: var(--bg-0);
+  border: 1px solid var(--card-border);
+  color: var(--text-hi);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+.volume-menu-mute:hover { border-color: var(--accent-ring); }
 
 .tile-name-tag {
   position: absolute;
@@ -242,6 +345,7 @@ body.room-body {
   max-width: 85vw;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   border-left: 1px solid var(--card-border);
   background: var(--bg-1);
 }
@@ -355,8 +459,9 @@ body.room-body {
 
 /* ---------- Barra de controles ---------- */
 .control-bar {
-  position: sticky;
-  bottom: 0;
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;

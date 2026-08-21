@@ -132,7 +132,7 @@ function criarTile({ id, nome, stream, local }) {
 
   const nameTag = document.createElement("span");
   nameTag.className = "tile-name-tag";
-  nameTag.textContent = local ? `${nome} (você)` : nome;
+  nameTag.textContent = nome;
   tile.appendChild(nameTag);
 
   const micBadge = document.createElement("div");
@@ -161,7 +161,7 @@ function criarTile({ id, nome, stream, local }) {
     settingsBtn.innerHTML = svgEngrenagem();
     settingsBtn.addEventListener("click", (evento) => {
       evento.stopPropagation();
-      alternarMenuVolume(settingsBtn, video, nome, tile.dataset.tileId);
+      alternarMenuVolume(settingsBtn, video, tile.dataset.nome || nome, tile.dataset.tileId);
     });
     tile.appendChild(settingsBtn);
   }
@@ -392,7 +392,7 @@ async function tentarAtivarMidia() {
   preJoinGate.classList.add("hidden");
   roomShell.classList.remove("hidden");
 
-  criarTile({ id: "local", nome: meuNome, stream: meuStream, local: true });
+  criarTile({ id: "local", nome: `${meuNome} (você)`, stream: meuStream, local: true });
 
   if (resultado.semCamera) {
     camBtn.disabled = true;
@@ -420,7 +420,7 @@ function registrarNaSala(slot = 1) {
   }
 
   const idTentativa = slotParaId(codigoSala, slot);
-  const peer = new Peer(idTentativa);
+  const peer = new Peer(idTentativa, { config: { iceServers: ICE_SERVERS } });
 
   peer.on("open", () => {
     meuPeer = peer;
@@ -455,9 +455,12 @@ function conectarComOutros() {
     });
     if (chamada) {
       chamada.on("stream", (streamRemoto) => {
-        adicionarParticipante(idAlvo, meuNome, chamada, streamRemoto);
+        // Nome provisório — o valor real chega em seguida pelo canal de
+        // dados (veja "apresentacao" em configurarConexaoDados). Antes,
+        // esse trecho usava "meuNome" por engano, rotulando o card da
+        // OUTRA pessoa com o SEU PRÓPRIO nome.
+        adicionarParticipante(idAlvo, "Participante", chamada, streamRemoto);
       });
-      aplicarTracksAtuais(chamada);
     }
 
     const conexaoDados = meuPeer.connect(idAlvo, {
@@ -474,11 +477,27 @@ function conectarComOutros() {
 function escutarConexoesRecebidas() {
   meuPeer.on("call", (chamada) => {
     const nomeRemoto = chamada.metadata?.nome || "Participante";
+
+    // Chamada de compartilhamento de tela: card totalmente separado,
+    // sem mexer no card da câmera dessa pessoa.
+    if (chamada.metadata?.tipo === "tela") {
+      chamada.answer(); // só recebemos, não precisamos mandar nada de volta
+      chamada.on("stream", (streamRecebida) => {
+        criarTile({
+          id: `${chamada.peer}-tela`,
+          nome: `Tela de ${nomeRemoto}`,
+          stream: streamRecebida,
+          local: false,
+        });
+      });
+      chamada.on("close", () => removerTile(`${chamada.peer}-tela`));
+      return;
+    }
+
     chamada.answer(meuStream);
     chamada.on("stream", (streamRemoto) => {
       adicionarParticipante(chamada.peer, nomeRemoto, chamada, streamRemoto);
     });
-    aplicarTracksAtuais(chamada);
   });
 
   meuPeer.on("connection", (conexao) => {
@@ -491,10 +510,19 @@ function configurarConexaoDados(idRemoto, conexao) {
     const info = participantes.get(idRemoto) || {};
     info.dataConn = conexao;
     participantes.set(idRemoto, info);
+    // Me apresento com meu nome real assim que o canal abre — não importa
+    // quem ligou pra quem, isso garante que a outra ponta sempre saiba
+    // meu nome de verdade (resolve o card mostrando o nome errado).
+    conexao.send({ tipo: "apresentacao", nome: meuNome });
   });
 
   conexao.on("data", (dado) => {
-    if (dado && dado.tipo === "chat") {
+    if (!dado) return;
+    if (dado.tipo === "apresentacao") {
+      atualizarNomeParticipante(idRemoto, dado.nome);
+      return;
+    }
+    if (dado.tipo === "chat") {
       const nomeRemoto = participantes.get(idRemoto)?.nome || dado.nome || "Participante";
       renderizarMensagem({ nome: nomeRemoto, texto: dado.texto, own: false });
     }
@@ -503,12 +531,26 @@ function configurarConexaoDados(idRemoto, conexao) {
   conexao.on("close", () => {
     participantes.delete(idRemoto);
     removerTile(idRemoto);
+    removerTile(`${idRemoto}-tela`);
+    telaMediaConns.delete(idRemoto);
   });
 }
 
 function adicionarParticipante(idRemoto, nome, mediaConn, stream) {
   const existente = participantes.get(idRemoto);
-  if (existente && existente.tileCriado) return; // evita tile duplicado
+  if (existente && existente.tileCriado) {
+    // Já existe um card pra essa pessoa — essa é uma segunda conexão
+    // duplicada (pode acontecer se as duas pontas ligarem uma pra
+    // outra quase ao mesmo tempo). Fecha a redundante.
+    if (mediaConn && mediaConn !== existente.mediaConn) {
+      try {
+        mediaConn.close();
+      } catch {
+        /* já estava fechada */
+      }
+    }
+    return;
+  }
 
   criarTile({ id: idRemoto, nome, stream, local: false });
   participantes.set(idRemoto, {
@@ -517,66 +559,42 @@ function adicionarParticipante(idRemoto, nome, mediaConn, stream) {
     nome,
     tileCriado: true,
   });
+
+  // Se eu já estiver compartilhando minha tela quando essa pessoa
+  // conecta, mando a transmissão pra ela também, num card separado.
+  if (compartilhandoTela && streamTela && !telaMediaConns.has(idRemoto)) {
+    enviarTelaPara(idRemoto);
+  }
+}
+
+function atualizarNomeParticipante(idRemoto, nomeReal) {
+  const info = participantes.get(idRemoto) || {};
+  if (info.nome === nomeReal) return;
+  info.nome = nomeReal;
+  participantes.set(idRemoto, info);
+
+  const tile = grid.querySelector(`[data-tile-id="${CSS.escape(idRemoto)}"]`);
+  if (tile) {
+    tile.dataset.nome = nomeReal;
+    const nameTag = tile.querySelector(".tile-name-tag");
+    if (nameTag) nameTag.textContent = nomeReal;
+  }
 }
 
 // ---------------------------------------------------------
-// Compartilhamento de tela
+// Compartilhamento de tela — card separado (estilo Google Meet)
+//
+// Sua câmera continua exatamente como estava, no seu próprio card.
+// A tela compartilhada aparece como um card NOVO, tanto pra você quanto
+// pros outros, e some quando você para de compartilhar.
 // ---------------------------------------------------------
-let audioCompartilhado = null; // { ctx, track } — mistura mic + áudio da tela, se houver
+const telaMediaConns = new Map(); // idRemoto -> MediaConnection (envio da minha tela pra cada pessoa)
 
-// Retorna a faixa de vídeo que devemos estar enviando agora:
-// a da tela (se estiver compartilhando) ou a da câmera.
-function trackDeVideoAtual() {
-  if (compartilhandoTela && streamTela) {
-    return streamTela.getVideoTracks()[0];
-  }
-  return meuStream.getVideoTracks()[0];
-}
-
-// Retorna a faixa de áudio a enviar: o microfone sozinho, ou o
-// microfone misturado com o áudio da tela (se o navegador cedeu esse áudio).
-function trackDeAudioAtual() {
-  if (compartilhandoTela && audioCompartilhado) {
-    return audioCompartilhado.track;
-  }
-  return meuStream.getAudioTracks()[0];
-}
-
-// Troca as faixas de vídeo/áudio enviadas numa chamada específica, sem
-// precisar refazer a conexão (renegociação silenciosa do WebRTC).
-function aplicarTracksAtuais(mediaConn) {
-  const pc = mediaConn?.peerConnection;
-  if (!pc) return;
-  const senders = pc.getSenders();
-
-  const remetenteVideo = senders.find((s) => s.track && s.track.kind === "video");
-  const novaVideo = trackDeVideoAtual();
-  if (remetenteVideo && novaVideo) {
-    remetenteVideo.replaceTrack(novaVideo).catch((err) => console.warn("Falha ao trocar vídeo:", err));
-  }
-
-  const remetenteAudio = senders.find((s) => s.track && s.track.kind === "audio");
-  const novaAudio = trackDeAudioAtual();
-  if (remetenteAudio && novaAudio) {
-    remetenteAudio.replaceTrack(novaAudio).catch((err) => console.warn("Falha ao trocar áudio:", err));
-  }
-}
-
-function aplicarTracksParaTodos() {
-  participantes.forEach((info) => {
-    if (info.mediaConn) aplicarTracksAtuais(info.mediaConn);
+function enviarTelaPara(idRemoto) {
+  const chamada = meuPeer.call(idRemoto, streamTela, {
+    metadata: { nome: meuNome, tipo: "tela" },
   });
-}
-
-function atualizarTileLocal(stream, rotulo) {
-  const tile = document.querySelector('.video-tile[data-tile-id="local"]');
-  if (!tile) return;
-  const video = tile.querySelector("video");
-  if (video) video.srcObject = stream;
-  const temVideo = !!stream && stream.getVideoTracks().length > 0;
-  tile.classList.toggle("has-video", temVideo);
-  const nameTag = tile.querySelector(".tile-name-tag");
-  if (nameTag) nameTag.textContent = rotulo;
+  if (chamada) telaMediaConns.set(idRemoto, chamada);
 }
 
 async function iniciarCompartilhamento() {
@@ -584,6 +602,9 @@ async function iniciarCompartilhamento() {
     // Pedimos vídeo + áudio da tela. Em muitos navegadores, o áudio só
     // vem se a pessoa marcar "Compartilhar áudio" na caixa de seleção
     // (e normalmente só funciona ao compartilhar uma aba, não a tela toda).
+    // Essa chamada é separada da sua câmera, então o áudio aqui é só o
+    // som da própria tela (ex: um vídeo tocando) — seu microfone continua
+    // indo normalmente pela sua chamada de câmera, sem se misturar.
     streamTela = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
   } catch {
     // Usuário cancelou a seleção de tela/janela. Não faz nada.
@@ -592,49 +613,36 @@ async function iniciarCompartilhamento() {
 
   compartilhandoTela = true;
   screenBtn.classList.add("active");
-  camBtn.disabled = true;
 
-  const audioDaTela = streamTela.getAudioTracks()[0] || null;
-  if (audioDaTela) {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
-      const destino = ctx.createMediaStreamDestination();
-      const micTrack = meuStream.getAudioTracks()[0];
-      if (micTrack) ctx.createMediaStreamSource(new MediaStream([micTrack])).connect(destino);
-      ctx.createMediaStreamSource(new MediaStream([audioDaTela])).connect(destino);
-      audioCompartilhado = { ctx, track: destino.stream.getAudioTracks()[0] };
-    } catch (err) {
-      console.warn("Não foi possível misturar o áudio da tela com o microfone:", err);
-      audioCompartilhado = null;
-    }
-  }
+  // Card local da sua própria tela, separado do card da sua câmera
+  criarTile({ id: "local-tela", nome: "Sua tela", stream: streamTela, local: true });
 
-  atualizarTileLocal(streamTela, "Você (compartilhando tela)");
-  aplicarTracksParaTodos();
+  // Manda a tela pra cada pessoa já conectada, num card novo pra cada uma
+  participantes.forEach((_, idRemoto) => enviarTelaPara(idRemoto));
 
   // Se o usuário parar pelo botão nativo do navegador ("Parar compartilhamento"),
-  // detectamos aqui e voltamos pra câmera automaticamente.
+  // detectamos aqui e encerramos tudo automaticamente.
   streamTela.getVideoTracks()[0].addEventListener("ended", pararCompartilhamento);
 }
 
 function pararCompartilhamento() {
   if (!compartilhandoTela) return;
 
+  telaMediaConns.forEach((chamada) => {
+    try {
+      chamada.close();
+    } catch {
+      /* já estava fechada */
+    }
+  });
+  telaMediaConns.clear();
+
   if (streamTela) streamTela.getTracks().forEach((t) => t.stop());
   streamTela = null;
 
-  if (audioCompartilhado) {
-    audioCompartilhado.ctx.close().catch(() => {});
-    audioCompartilhado = null;
-  }
-
   compartilhandoTela = false;
   screenBtn.classList.remove("active");
-  camBtn.disabled = false;
-
-  atualizarTileLocal(meuStream, `${meuNome} (você)`);
-  aplicarTracksParaTodos();
+  removerTile("local-tela");
 }
 
 screenBtn.addEventListener("click", () => {
@@ -752,7 +760,6 @@ window.addEventListener("beforeunload", encerrarTudo);
 function encerrarTudo() {
   if (meuStream) meuStream.getTracks().forEach((t) => t.stop());
   if (streamTela) streamTela.getTracks().forEach((t) => t.stop());
-  if (audioCompartilhado) audioCompartilhado.ctx.close().catch(() => {});
   if (meuPeer) meuPeer.destroy();
 }
 

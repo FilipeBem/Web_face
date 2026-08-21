@@ -256,6 +256,28 @@ body.room-body {
 .tile-expand-btn svg { width: 14px; height: 14px; }
 .tile-expand-btn:hover { color: var(--accent); }
 
+/* Engrenagem de volume — canto superior esquerdo */
+.tile-settings-btn {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(10, 15, 26, 0.72);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: var(--text-hi);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  z-index: 5;
+}
+.tile-settings-btn svg { width: 15px; height: 15px; }
+.tile-settings-btn:hover { color: var(--accent); }
+
 /* Quando o nome está no canto inferior esquerdo, o botão fica no direito — sem colisão */
 
 .tile-backdrop {

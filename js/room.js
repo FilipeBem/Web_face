@@ -67,6 +67,45 @@ function iniciais(nome) {
 }
 
 // ---------------------------------------------------------
+// Reprodução em dispositivos móveis
+// ---------------------------------------------------------
+// Navegadores móveis (principalmente Safari no iPhone) bloqueiam a
+// reprodução automática de vídeo com áudio sem uma interação direta da
+// pessoa. Tentamos tocar o vídeo assim que ele chega e, se o navegador
+// bloquear, guardamos ele pra tentar de novo no primeiro toque na tela.
+const videosPendentesDeReproducao = new Set();
+let avisoReproducaoMostrado = false;
+
+function tentarReproduzir(video) {
+  const promessa = video.play();
+  if (promessa && typeof promessa.catch === "function") {
+    promessa.catch(() => {
+      videosPendentesDeReproducao.add(video);
+      if (!avisoReproducaoMostrado) {
+        avisoReproducaoMostrado = true;
+        mostrarStatus("Toque em qualquer lugar da tela para ativar o vídeo dos participantes.");
+      }
+    });
+  }
+}
+
+function destravarReproducaoPendente() {
+  if (videosPendentesDeReproducao.size === 0) return;
+  videosPendentesDeReproducao.forEach((video) => {
+    video
+      .play()
+      .then(() => videosPendentesDeReproducao.delete(video))
+      .catch(() => {});
+  });
+  if (videosPendentesDeReproducao.size === 0) {
+    avisoReproducaoMostrado = false;
+    esconderStatus();
+  }
+}
+document.addEventListener("click", destravarReproducaoPendente);
+document.addEventListener("touchend", destravarReproducaoPendente);
+
+// ---------------------------------------------------------
 // Criação dos tiles de vídeo
 // ---------------------------------------------------------
 function criarTile({ id, nome, stream, local }) {
@@ -81,6 +120,7 @@ function criarTile({ id, nome, stream, local }) {
   if (local) video.muted = true;
   if (stream) video.srcObject = stream;
   tile.appendChild(video);
+  tentarReproduzir(video);
 
   const temVideo = !!stream && stream.getVideoTracks().length > 0;
   tile.classList.toggle("has-video", temVideo);
@@ -111,42 +151,20 @@ function criarTile({ id, nome, stream, local }) {
   });
   tile.appendChild(expandBtn);
 
-  // Menu de volume: só faz sentido em participantes remotos (o próprio
-  // vídeo local já vem sem áudio, pra não gerar eco).
-  // Computador: clique com o botão direito. Celular: toque e segure.
+  // Engrenagem de volume — só em participantes remotos, e só afeta
+  // o áudio deles NO SEU aparelho (nunca muda nada pros outros).
   if (!local) {
-    tile.addEventListener("contextmenu", (evento) => {
-      evento.preventDefault();
-      abrirMenuVolume(tile, video, nome, evento.clientX, evento.clientY);
+    const settingsBtn = document.createElement("button");
+    settingsBtn.className = "tile-settings-btn";
+    settingsBtn.title = "Volume";
+    settingsBtn.type = "button";
+    settingsBtn.innerHTML = svgEngrenagem();
+    settingsBtn.addEventListener("click", (evento) => {
+      evento.stopPropagation();
+      alternarMenuVolume(settingsBtn, video, nome, tile.dataset.tileId);
     });
-
-    let temporizadorToque = null;
-    const cancelarToqueLongo = () => {
-      if (temporizadorToque) {
-        clearTimeout(temporizadorToque);
-        temporizadorToque = null;
-      }
-    };
-
-    tile.addEventListener(
-      "touchstart",
-      (evento) => {
-        if (evento.target.closest(".tile-expand-btn")) return;
-        const toque = evento.touches[0];
-        const x = toque.clientX;
-        const y = toque.clientY;
-        temporizadorToque = setTimeout(() => {
-          abrirMenuVolume(tile, video, nome, x, y);
-          temporizadorToque = null;
-        }, 550);
-      },
-      { passive: true }
-    );
-    tile.addEventListener("touchend", cancelarToqueLongo);
-    tile.addEventListener("touchmove", cancelarToqueLongo);
-    tile.addEventListener("touchcancel", cancelarToqueLongo);
+    tile.appendChild(settingsBtn);
   }
-
   grid.appendChild(tile);
   atualizarContadorParticipantes();
   return tile;
@@ -179,6 +197,13 @@ function svgExpandir() {
 function svgRecolher() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
     <path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+  </svg>`;
+}
+
+function svgEngrenagem() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
   </svg>`;
 }
 
@@ -225,7 +250,11 @@ document.addEventListener("keydown", (evento) => {
 });
 
 // ---------------------------------------------------------
-// Menu de volume por participante (botão direito no card)
+// Volume por participante (engrenagem no canto superior esquerdo)
+//
+// Importante: isso SÓ muda o volume no seu próprio aparelho. Cada
+// pessoa na sala tem seu próprio controle, independente dos outros —
+// se Pedro abaixa o volume de Ana, isso não muda nada para Lucas.
 // ---------------------------------------------------------
 const volumeMenu = document.getElementById("volume-menu");
 const volumeMenuNome = document.getElementById("volume-menu-name");
@@ -233,18 +262,40 @@ const volumeMenuSlider = document.getElementById("volume-menu-slider");
 const volumeMenuMuteBtn = document.getElementById("volume-menu-mute");
 
 let videoDoMenuAtivo = null;
+let botaoDoMenuAtivo = null;
 
-function abrirMenuVolume(tile, video, nome, x, y) {
+function posicionarMenuVolume(botao) {
+  const retangulo = botao.getBoundingClientRect();
+  const larguraMenu = 220;
+  const alturaMenu = 150;
+  let esquerda = retangulo.left;
+  let topo = retangulo.bottom + 8;
+
+  if (esquerda + larguraMenu > window.innerWidth - 12) {
+    esquerda = window.innerWidth - larguraMenu - 12;
+  }
+  if (topo + alturaMenu > window.innerHeight - 12) {
+    topo = retangulo.top - alturaMenu - 8;
+  }
+  volumeMenu.style.left = `${Math.max(12, esquerda)}px`;
+  volumeMenu.style.top = `${Math.max(12, topo)}px`;
+}
+
+function alternarMenuVolume(botao, video, nome, tileId) {
+  const jaAberto = !volumeMenu.classList.contains("hidden") && botaoDoMenuAtivo === botao;
+  if (jaAberto) {
+    fecharMenuVolume();
+    return;
+  }
+
   videoDoMenuAtivo = video;
-  volumeMenu.dataset.targetTile = tile.dataset.tileId;
+  botaoDoMenuAtivo = botao;
+  volumeMenu.dataset.targetTile = tileId;
   volumeMenuNome.textContent = nome;
   volumeMenuSlider.value = Math.round((video.muted ? 0 : video.volume) * 100);
   volumeMenuMuteBtn.textContent = video.muted ? "Reativar som" : "Silenciar";
 
-  const larguraMenu = 220;
-  const alturaMenu = 140;
-  volumeMenu.style.left = `${Math.min(x, window.innerWidth - larguraMenu - 12)}px`;
-  volumeMenu.style.top = `${Math.min(y, window.innerHeight - alturaMenu - 12)}px`;
+  posicionarMenuVolume(botao);
   volumeMenu.classList.remove("hidden");
 }
 
@@ -252,6 +303,7 @@ function fecharMenuVolume() {
   volumeMenu.classList.add("hidden");
   volumeMenu.dataset.targetTile = "";
   videoDoMenuAtivo = null;
+  botaoDoMenuAtivo = null;
 }
 
 volumeMenuSlider.addEventListener("input", () => {
@@ -269,16 +321,16 @@ volumeMenuMuteBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (evento) => {
-  if (!volumeMenu.contains(evento.target)) fecharMenuVolume();
+  if (
+    !volumeMenu.contains(evento.target) &&
+    !evento.target.closest(".tile-settings-btn")
+  ) {
+    fecharMenuVolume();
+  }
 });
-document.addEventListener(
-  "contextmenu",
-  (evento) => {
-    if (!evento.target.closest(".video-tile")) fecharMenuVolume();
-  },
-  true
-);
 window.addEventListener("resize", fecharMenuVolume);
+window.addEventListener("scroll", fecharMenuVolume, true);
+
 
 // ---------------------------------------------------------
 // 1) Pega câmera/microfone locais

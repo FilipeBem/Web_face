@@ -35,6 +35,11 @@ const copyBtn = document.getElementById("copy-link-btn");
 const micBtn = document.getElementById("mic-btn");
 const camBtn = document.getElementById("cam-btn");
 const screenBtn = document.getElementById("screenshare-btn");
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+  screenBtn.disabled = true;
+  screenBtn.title = "Esse navegador não suporta compartilhar tela (comum no Safari do iPhone)";
+}
 const leaveBtn = document.getElementById("leave-btn");
 
 const preJoinGate = document.getElementById("pre-join-gate");
@@ -552,11 +557,16 @@ function adicionarParticipante(idRemoto, nome, mediaConn, stream) {
     return;
   }
 
-  criarTile({ id: idRemoto, nome, stream, local: false });
+  // Se a apresentação (canal de dados) já chegou antes da chamada de
+  // vídeo terminar de conectar, "existente.nome" já tem o nome real —
+  // nesse caso ele tem prioridade sobre o rótulo provisório "Participante".
+  const nomeFinal = (existente && existente.nome) || nome;
+
+  criarTile({ id: idRemoto, nome: nomeFinal, stream, local: false });
   participantes.set(idRemoto, {
     ...(existente || {}),
     mediaConn,
-    nome,
+    nome: nomeFinal,
     tileCriado: true,
   });
 
@@ -598,6 +608,14 @@ function enviarTelaPara(idRemoto) {
 }
 
 async function iniciarCompartilhamento() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    mostrarStatus(
+      "Esse navegador não permite compartilhar tela. No celular, tente pelo Chrome (Android) — o Safari do iPhone ainda não oferece suporte completo a isso.",
+      "error"
+    );
+    return;
+  }
+
   try {
     // Pedimos vídeo + áudio da tela. Em muitos navegadores, o áudio só
     // vem se a pessoa marcar "Compartilhar áudio" na caixa de seleção
@@ -606,8 +624,12 @@ async function iniciarCompartilhamento() {
     // som da própria tela (ex: um vídeo tocando) — seu microfone continua
     // indo normalmente pela sua chamada de câmera, sem se misturar.
     streamTela = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-  } catch {
-    // Usuário cancelou a seleção de tela/janela. Não faz nada.
+  } catch (err) {
+    if (err && err.name && err.name !== "NotAllowedError") {
+      console.warn("Erro ao compartilhar tela:", err);
+      mostrarStatus("Não foi possível compartilhar a tela. Tente novamente.", "error");
+    }
+    // NotAllowedError geralmente é só a pessoa cancelando a seleção — silencioso.
     return;
   }
 

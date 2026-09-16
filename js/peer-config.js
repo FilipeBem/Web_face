@@ -30,6 +30,13 @@ const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 
+  // TURN de teste, sem cadastro (freestun.net) — usado pra confirmar se
+  // TURN resolve o problema de conexão entre redes diferentes. Não é
+  // garantido a longo prazo; troque pelo Metered/Open Relay se funcionar
+  // bem e você quiser algo mais estável no futuro.
+  { urls: "stun:freestun.net:3478" },
+  { urls: "turn:freestun.net:3478", username: "free", credential: "free" },
+
   // Exemplo de como fica depois de colar suas credenciais do Metered/Open Relay:
   // { urls: "turn:standard.relay.metered.ca:80", username: "SEU_USUARIO", credential: "SUA_SENHA" },
   // { urls: "turn:standard.relay.metered.ca:443", username: "SEU_USUARIO", credential: "SUA_SENHA" },

@@ -1,11 +1,13 @@
 // Gera um código de sala curto e legível (ex: azul-tigre-42)
 function gerarCodigoSala() {
-  const adjetivos = ["azul", "verde", "rapido", "calmo", "novo", "alto", "leve", "vivo"];
-  const substantivos = ["tigre", "rio", "monte", "vento", "sol", "lua", "campo", "farol"];
-  const a = adjetivos[Math.floor(Math.random() * adjetivos.length)];
-  const s = substantivos[Math.floor(Math.random() * substantivos.length)];
-  const n = Math.floor(10 + Math.random() * 90);
-  return `${a}-${s}-${n}`;
+  // 5 caracteres, letras (sempre maiúsculas) e números.
+  // Evitamos 0/O, 1/I/L (fáceis de confundir ao digitar o código à mão).
+  const caracteres = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let codigo = "";
+  for (let i = 0; i < 5; i++) {
+    codigo += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
+  }
+  return codigo;
 }
 
 function irParaSala(codigo, nome) {
@@ -20,12 +22,27 @@ document.addEventListener("DOMContentLoaded", () => {
   const entrarBtn = document.getElementById("entrar-sala-btn");
   const erroEl = document.getElementById("erro-msg");
 
+  function mostrarErro(msg, campo) {
+    erroEl.textContent = msg;
+    erroEl.classList.remove("hidden");
+    if (campo) {
+      campo.focus();
+      campo.style.borderColor = "#f87171";
+      campo.addEventListener(
+        "input",
+        () => {
+          campo.style.borderColor = "";
+          erroEl.classList.add("hidden");
+        },
+        { once: true }
+      );
+    }
+  }
+
   function pegarNome() {
     const nome = nomeInput.value.trim();
     if (!nome) {
-      nomeInput.focus();
-      erroEl.textContent = "Digite seu nome para continuar.";
-      erroEl.classList.remove("hidden");
+      mostrarErro("Digite seu nome para continuar.", nomeInput);
       return null;
     }
     erroEl.classList.add("hidden");
@@ -45,8 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let valor = linkInput.value.trim();
     if (!valor) {
-      erroEl.textContent = "Cole o link ou código da sala.";
-      erroEl.classList.remove("hidden");
+      mostrarErro("Cole o link ou código da sala.", linkInput);
       return;
     }
 
@@ -60,6 +76,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       // valor não é uma URL válida, tratamos como código puro
     }
+
+    // Códigos de sala são sempre em maiúsculas — normaliza caso a
+    // pessoa tenha digitado em minúsculas.
+    codigo = codigo.trim().toUpperCase();
 
     irParaSala(codigo, nome);
   });

@@ -59,6 +59,28 @@ function esconderStatus() {
   statusEl.classList.add("hidden");
 }
 
+function mostrarStatusComBotaoTentarDeNovo(msg, aoClicar) {
+  statusEl.innerHTML = "";
+  statusEl.classList.remove("hidden");
+  statusEl.classList.add("error");
+
+  const texto = document.createElement("span");
+  texto.textContent = msg;
+  statusEl.appendChild(texto);
+
+  const botao = document.createElement("button");
+  botao.textContent = "Tentar novamente";
+  botao.className = "btn-secondary";
+  botao.style.marginTop = "10px";
+  botao.style.display = "block";
+  botao.addEventListener("click", () => {
+    esconderStatus();
+    mostrarStatus("Procurando outros participantes na sala...");
+    aoClicar();
+  });
+  statusEl.appendChild(botao);
+}
+
 // ---------------------------------------------------------
 // Iniciais / avatar de fallback
 // ---------------------------------------------------------
@@ -427,7 +449,27 @@ function registrarNaSala(slot = 1) {
   const idTentativa = slotParaId(codigoSala, slot);
   const peer = new Peer(idTentativa, { config: { iceServers: ICE_SERVERS } });
 
+  // Tempo limite: se o servidor de sinalização não responder em tempo
+  // razoável (rede lenta, bloqueio de firewall, instabilidade do serviço
+  // gratuito), avisamos a pessoa em vez de deixar a tela "carregando"
+  // pra sempre sem explicação.
+  let expirou = false;
+  const temporizador = setTimeout(() => {
+    expirou = true;
+    try {
+      peer.destroy();
+    } catch {
+      /* ignora */
+    }
+    mostrarStatusComBotaoTentarDeNovo(
+      "Não consegui conectar ao servidor da sala. Isso costuma ser rede lenta, uma rede que bloqueia esse tipo de conexão, ou instabilidade momentânea do serviço gratuito usado para conectar as pessoas.",
+      () => registrarNaSala(1)
+    );
+  }, 12000);
+
   peer.on("open", () => {
+    if (expirou) return;
+    clearTimeout(temporizador);
     meuPeer = peer;
     meuSlot = slot;
     esconderStatus();
@@ -436,11 +478,19 @@ function registrarNaSala(slot = 1) {
   });
 
   peer.on("error", (err) => {
+    if (expirou) return;
     if (err.type === "unavailable-id") {
+      clearTimeout(temporizador);
       peer.destroy();
       registrarNaSala(slot + 1);
     } else if (err.type === "peer-unavailable") {
       // Esperado: tentamos falar com uma vaga vazia. Ignora.
+    } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error" || err.type === "socket-closed") {
+      clearTimeout(temporizador);
+      mostrarStatusComBotaoTentarDeNovo(
+        "Não consegui conectar ao servidor da sala (falha de rede). Verifique sua internet e tente de novo.",
+        () => registrarNaSala(1)
+      );
     } else {
       console.warn("Erro de conexão:", err);
     }
